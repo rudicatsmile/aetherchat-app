@@ -3,7 +3,7 @@
 import React, { useRef, useEffect } from "react";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
-import { MOCK_SUGGESTED_PROMPTS } from "@/lib/mock-data";
+import { SUGGESTED_PROMPTS } from "@/config/prompts";
 import { Sparkles, ArrowRight, Zap, Shield, Globe2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { useChat } from "@/hooks/useChat";
@@ -73,7 +73,7 @@ export function ChatWindow({ conversationId, initialTitle }: ChatWindowProps) {
 
               {/* Suggested Prompts Cards */}
               <div className="mt-10 grid w-full grid-cols-1 sm:grid-cols-2 gap-3 text-left">
-                {MOCK_SUGGESTED_PROMPTS.map((item, idx) => (
+                {SUGGESTED_PROMPTS.map((item, idx) => (
                   <Card
                     key={idx}
                     onClick={() => sendMessage(item.prompt)}

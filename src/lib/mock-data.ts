@@ -1,45 +1,12 @@
-export interface MockUser {
-  id: string;
-  email: string;
-  fullName: string;
-  avatarUrl: string;
-  role: "user" | "admin";
-  locale: string;
-  theme: "dark" | "light" | "system";
-}
+/**
+ * TEST FIXTURE ONLY:
+ * File ini hanya diperuntukkan bagi pengujian otomatis (automated test suite: scripts/test-e2e.ts).
+ * Seluruh alur produksi (production flows) menggunakan data riil dari Supabase Database & Storage.
+ */
 
-export interface MockFolder {
-  id: string;
-  name: string;
-  color: string;
-  icon: string;
-  parentId?: string | null;
-  count?: number;
-}
+import { MockUser, MockFolder, MockConversation, MockMessage } from "@/types/chat";
+export type { MockUser, MockFolder, MockConversation, MockMessage };
 
-export interface MockConversation {
-  id: string;
-  title: string;
-  model: string;
-  provider: "groq" | "openai" | "openrouter";
-  isPinned: boolean;
-  isFavorite: boolean;
-  folderId?: string | null;
-  updatedAt: string;
-  lastMessageSnippet?: string;
-}
-
-export interface MockMessage {
-  id: string;
-  conversationId: string;
-  role: "user" | "assistant" | "system";
-  content: string;
-  model?: string;
-  provider?: string;
-  createdAt: string;
-  totalTokens?: number;
-  durationMs?: number;
-}
 
 export const CURRENT_MOCK_USER: MockUser = {
   id: "usr-01",

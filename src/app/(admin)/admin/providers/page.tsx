@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { SlidersHorizontal, Check, Server, ShieldAlert } from "lucide-react";
+import { SlidersHorizontal, Check, Server, ShieldAlert, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
+import { saveAdminGlobalConfigAction } from "@/actions/admin";
 
 export default function AdminProvidersPage() {
   const [defaultProvider, setDefaultProvider] = useState("groq");
@@ -13,12 +14,37 @@ export default function AdminProvidersPage() {
   const [dailyImageGen, setDailyImageGen] = useState("5");
   const [dailyWebSearch, setDailyWebSearch] = useState("20");
   const [rateLimitReqPerMin, setRateLimitReqPerMin] = useState("500");
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+    try {
+      setSaving(true);
+      setError(null);
+      const res = await saveAdminGlobalConfigAction({
+        defaultProvider,
+        defaultModel,
+        dailyMessages: parseInt(dailyMessages, 10) || 50,
+        dailyImageGen: parseInt(dailyImageGen, 10) || 5,
+        dailyWebSearch: parseInt(dailyWebSearch, 10) || 20,
+        rateLimitReqPerMin: parseInt(rateLimitReqPerMin, 10) || 500,
+      });
+
+      if (res?.error) {
+        setError(res.error);
+        return;
+      }
+
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Gagal menyimpan konfigurasi";
+      setError(msg);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -32,6 +58,12 @@ export default function AdminProvidersPage() {
           Atur penyedia AI bawaan, model gratis default, dan batasan kuota harian untuk seluruh pengguna.
         </p>
       </div>
+
+      {error && (
+        <div className="p-3 text-xs text-rose-400 bg-rose-950/30 border border-rose-800/50 rounded-xl">
+          {error}
+        </div>
+      )}
 
       <form onSubmit={handleSave}>
         <Card className="bg-card/70 border-border/80 rounded-2xl">
@@ -141,12 +173,19 @@ export default function AdminProvidersPage() {
               {saved && (
                 <span className="flex items-center gap-1.5 text-emerald-400 font-semibold animate-in fade-in">
                   <Check className="h-4 w-4" />
-                  Konfigurasi berhasil disimpan ke sistem!
+                  Konfigurasi berhasil dicatat ke sistem audit!
                 </span>
               )}
             </span>
-            <Button type="submit" variant="glow" size="sm" className="text-white">
-              Terapkan Konfigurasi Global
+            <Button
+              type="submit"
+              variant="glow"
+              size="sm"
+              disabled={saving}
+              className="text-white flex items-center gap-1.5"
+            >
+              {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {saving ? "Menyimpan..." : "Terapkan Konfigurasi Global"}
             </Button>
           </CardFooter>
         </Card>

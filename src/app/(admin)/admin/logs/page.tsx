@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { FileText, Search, AlertCircle, Filter } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { FileText, Search, AlertCircle, Filter, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -14,18 +14,35 @@ import {
   TableBody,
   TableCell,
 } from "@/components/ui/table";
-import { MOCK_ADMIN_LOGS } from "@/lib/mock-data";
+import { getAdminLogsAction, AdminLogItem } from "@/actions/admin";
 
 export default function AdminLogsPage() {
+  const [logs, setLogs] = useState<AdminLogItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState("all");
   const [search, setSearch] = useState("");
 
-  const filteredLogs = MOCK_ADMIN_LOGS.filter((log) => {
-    const matchType = filterType === "all" || log.type.includes(filterType.toUpperCase());
+  useEffect(() => {
+    async function loadLogs() {
+      try {
+        setLoading(true);
+        const data = await getAdminLogsAction(filterType === "all" ? undefined : filterType);
+        setLogs(data);
+      } catch (err) {
+        console.error("Gagal memuat log audit admin:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadLogs();
+  }, [filterType]);
+
+  const filteredLogs = logs.filter((log) => {
     const matchSearch =
       log.user.toLowerCase().includes(search.toLowerCase()) ||
-      log.detail.toLowerCase().includes(search.toLowerCase());
-    return matchType && matchSearch;
+      log.detail.toLowerCase().includes(search.toLowerCase()) ||
+      log.type.toLowerCase().includes(search.toLowerCase());
+    return matchSearch;
   });
 
   return (
@@ -36,7 +53,7 @@ export default function AdminLogsPage() {
           Audit Trail & Log Sistem
         </h1>
         <p className="text-xs text-muted-foreground mt-1">
-          Rekaman peristiwa keamanan sistem, pemicu rate limit, eksekusi pg_cron, dan deteksi anomali.
+          Rekaman peristiwa keamanan sistem, kontrol pengguna, konfigurasi global, dan deteksi anomali langsung dari tabel database.
         </p>
       </div>
 
@@ -62,78 +79,88 @@ export default function AdminLogsPage() {
             Semua
           </Button>
           <Button
-            variant={filterType === "rate_limit" ? "default" : "outline"}
+            variant={filterType === "USER" ? "default" : "outline"}
             size="sm"
-            onClick={() => setFilterType("rate_limit")}
+            onClick={() => setFilterType("USER")}
             className="text-xs rounded-xl"
           >
-            Rate Limit
+            Aktivitas User
           </Button>
           <Button
-            variant={filterType === "auth" ? "default" : "outline"}
+            variant={filterType === "CONFIG" ? "default" : "outline"}
             size="sm"
-            onClick={() => setFilterType("auth")}
+            onClick={() => setFilterType("CONFIG")}
             className="text-xs rounded-xl"
           >
-            Autentikasi
+            Konfigurasi
           </Button>
           <Button
-            variant={filterType === "cron" ? "default" : "outline"}
+            variant={filterType === "SECURITY" ? "default" : "outline"}
             size="sm"
-            onClick={() => setFilterType("cron")}
+            onClick={() => setFilterType("SECURITY")}
             className="text-xs rounded-xl"
           >
-            Cron
+            Keamanan
           </Button>
         </div>
       </div>
 
       {/* Logs Table */}
       <Card className="bg-card/70 border-border/80 rounded-2xl overflow-hidden shadow-sm">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="text-xs">Waktu (WIB)</TableHead>
-              <TableHead className="text-xs">Tipe Event</TableHead>
-              <TableHead className="text-xs">Pengguna / Aktor</TableHead>
-              <TableHead className="text-xs">Detail Peristiwa</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredLogs.length === 0 ? (
+        {loading ? (
+          <div className="py-16 text-center text-xs text-muted-foreground flex flex-col items-center justify-center gap-2">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <span>Memuat audit logs dari database...</span>
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={4} className="text-center py-8 text-xs text-muted-foreground">
-                  Tidak ada rekaman log yang cocok.
-                </TableCell>
+                <TableHead className="text-xs">Waktu (WIB)</TableHead>
+                <TableHead className="text-xs">Tipe Event</TableHead>
+                <TableHead className="text-xs">Pengguna / Aktor</TableHead>
+                <TableHead className="text-xs">Detail Peristiwa</TableHead>
               </TableRow>
-            ) : (
-              filteredLogs.map((log) => {
-                const isWarning = log.type.includes("WARNING");
-                return (
-                  <TableRow key={log.id}>
-                    <TableCell className="text-xs font-mono text-muted-foreground whitespace-nowrap">
-                      {log.timestamp}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={isWarning ? "destructive" : "outline"}
-                        className="text-[10px] font-mono"
-                      >
-                        {log.type}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs font-medium text-foreground whitespace-nowrap">
-                      {log.user}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground leading-relaxed">
-                      {log.detail}
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {filteredLogs.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center py-8 text-xs text-muted-foreground">
+                    Tidak ada rekaman log yang cocok.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredLogs.map((log) => {
+                  const isWarning =
+                    log.type.includes("WARNING") ||
+                    log.type.includes("BAN") ||
+                    log.type.includes("ERROR");
+                  return (
+                    <TableRow key={log.id}>
+                      <TableCell className="text-xs font-mono text-muted-foreground whitespace-nowrap">
+                        {log.timestamp}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={isWarning ? "destructive" : "outline"}
+                          className="text-[10px] font-mono"
+                        >
+                          {log.type}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs font-medium text-foreground whitespace-nowrap">
+                        {log.user}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground leading-relaxed">
+                        {log.detail}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        )}
       </Card>
     </div>
   );
