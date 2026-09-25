@@ -42,7 +42,13 @@ interface UploadedAttachment {
 interface ChatInputProps {
   onSendMessage: (
     content: string,
-    options?: { webSearch?: boolean; isImageGen?: boolean; attachments?: UploadedAttachment[] }
+    options?: {
+      webSearch?: boolean;
+      isImageGen?: boolean;
+      attachments?: UploadedAttachment[];
+      model?: string;
+      provider?: string;
+    }
   ) => void;
   isLoading?: boolean;
   onStop?: () => void;
@@ -65,7 +71,7 @@ export function ChatInput({
   const [selectedModel, setSelectedModel] = useState({
     name: "Llama 3.3 70B",
     id: "llama-3.3-70b-versatile",
-    provider: "Groq (Cepat)",
+    provider: "groq",
   });
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -105,6 +111,8 @@ export function ChatInput({
       webSearch: webSearchActive,
       isImageGen: imageGenActive,
       attachments,
+      model: selectedModel.id,
+      provider: selectedModel.provider,
     });
 
     setContent("");
@@ -355,13 +363,13 @@ export function ChatInput({
                       setSelectedModel({
                         name: "Llama 3.3 70B",
                         id: "llama-3.3-70b-versatile",
-                        provider: "Groq (Cepat)",
+                        provider: "groq",
                       })
                     }
                   >
                     <div className="flex flex-col">
-                      <span className="font-semibold text-xs">Llama 3.3 70B Versatile</span>
-                      <span className="text-[10px] text-muted-foreground">Groq • Super Cepat • Gratis</span>
+                       <span className="font-semibold text-xs">Llama 3.3 70B Versatile</span>
+                       <span className="text-[10px] text-muted-foreground">Groq • Super Cepat • Gratis</span>
                     </div>
                   </DropdownMenuItem>
                   <DropdownMenuItem
@@ -369,13 +377,13 @@ export function ChatInput({
                       setSelectedModel({
                         name: "GPT-4o Mini",
                         id: "gpt-4o-mini",
-                        provider: "OpenAI",
+                        provider: "openai",
                       })
                     }
                   >
                     <div className="flex flex-col">
-                      <span className="font-semibold text-xs">GPT-4o Mini</span>
-                      <span className="text-[10px] text-muted-foreground">OpenAI • Cerdas & Ringkas</span>
+                       <span className="font-semibold text-xs">GPT-4o Mini</span>
+                       <span className="text-[10px] text-muted-foreground">OpenAI • Cerdas & Ringkas</span>
                     </div>
                   </DropdownMenuItem>
                   <DropdownMenuItem
@@ -383,13 +391,13 @@ export function ChatInput({
                       setSelectedModel({
                         name: "Mistral Large",
                         id: "mistral-large-2407",
-                        provider: "OpenRouter",
+                        provider: "openrouter",
                       })
                     }
                   >
                     <div className="flex flex-col">
-                      <span className="font-semibold text-xs">Mistral Large</span>
-                      <span className="text-[10px] text-muted-foreground">OpenRouter • Penalaran Kuat</span>
+                       <span className="font-semibold text-xs">Mistral Large</span>
+                       <span className="text-[10px] text-muted-foreground">OpenRouter • Penalaran Kuat</span>
                     </div>
                   </DropdownMenuItem>
                 </DropdownMenuContent>

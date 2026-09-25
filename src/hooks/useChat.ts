@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { MockMessage } from "@/lib/mock-data";
+import { MockMessage } from "@/types/chat";
 import { saveMessageAction, getMessagesAction } from "@/actions/messages";
+import { createConversationAction } from "@/actions/conversations";
 import { createClient } from "@/lib/supabase/client";
 
-interface UploadedAttachment {
+export interface UploadedAttachment {
   id: string;
   fileName: string;
   fileType: string;
@@ -15,7 +16,7 @@ interface UploadedAttachment {
   isImage?: boolean;
 }
 
-interface UseChatOptions {
+export interface UseChatOptions {
   initialMessages?: MockMessage[];
   conversationId?: string;
   model?: string;
@@ -25,16 +26,24 @@ interface UseChatOptions {
 export function useChat(options: UseChatOptions = {}) {
   const [messages, setMessages] = useState<MockMessage[]>(options.initialMessages || []);
   const [isLoading, setIsLoading] = useState(false);
+  const [activeConversationId, setActiveConversationId] = useState<string | undefined>(
+    options.conversationId
+  );
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    setActiveConversationId(options.conversationId);
+  }, [options.conversationId]);
 
   // Load existing real messages from Supabase on mount
   useEffect(() => {
-    if (!options.conversationId) return;
+    if (!activeConversationId) return;
+    const convId = activeConversationId;
 
     let isMounted = true;
     async function loadHistory() {
       try {
-        const history = await getMessagesAction(options.conversationId!);
+        const history = await getMessagesAction(convId);
         if (isMounted && history && history.length > 0) {
           setMessages(history);
         }
@@ -47,22 +56,23 @@ export function useChat(options: UseChatOptions = {}) {
     return () => {
       isMounted = false;
     };
-  }, [options.conversationId]);
+  }, [activeConversationId]);
 
   // Subscribe to Supabase Realtime messages channel for this conversation
   useEffect(() => {
-    if (!options.conversationId) return;
+    const targetId = activeConversationId;
+    if (!targetId) return;
 
     const supabase = createClient();
     const channel = supabase
-      .channel(`realtime-messages-${options.conversationId}`)
+      .channel(`realtime-messages-${targetId}`)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "messages",
-          filter: `conversation_id=eq.${options.conversationId}`,
+          filter: `conversation_id=eq.${targetId}`,
         },
         (payload: any) => {
           const newMsg: MockMessage = {
@@ -72,10 +82,11 @@ export function useChat(options: UseChatOptions = {}) {
             content: payload.new.content,
             model: payload.new.model,
             provider: payload.new.provider,
-            createdAt: new Date(payload.new.created_at).toLocaleTimeString("id-ID", {
-              hour: "2-digit",
-              minute: "2-digit",
-            }) + " WIB",
+            createdAt:
+              new Date(payload.new.created_at).toLocaleTimeString("id-ID", {
+                hour: "2-digit",
+                minute: "2-digit",
+              }) + " WIB",
           };
 
           setMessages((prev) => {
@@ -89,7 +100,7 @@ export function useChat(options: UseChatOptions = {}) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [options.conversationId]);
+  }, [activeConversationId]);
 
   const sendMessage = async (
     content: string,
@@ -97,6 +108,8 @@ export function useChat(options: UseChatOptions = {}) {
       webSearch?: boolean;
       isImageGen?: boolean;
       attachments?: UploadedAttachment[];
+      model?: string;
+      provider?: string;
     }
   ) => {
     if (!content.trim() && (!chatOptions?.attachments || chatOptions.attachments.length === 0)) {
@@ -104,32 +117,60 @@ export function useChat(options: UseChatOptions = {}) {
     }
     if (isLoading) return;
 
+    const effectiveModel =
+      chatOptions?.model || options.model || "llama-3.3-70b-versatile";
+    const effectiveProvider =
+      chatOptions?.provider || options.provider || "groq";
+
     let displayContent = content;
     if (chatOptions?.attachments && chatOptions.attachments.length > 0) {
       const attsText = chatOptions.attachments
-        .map((a) => (a.isImage ? `![${a.fileName}](${a.url})` : `📄 **Lampiran Dokumen:** ${a.fileName}`))
+        .map((a) =>
+          a.isImage ? `![${a.fileName}](${a.url})` : `📄 **Lampiran Dokumen:** ${a.fileName}`
+        )
         .join("\n\n");
       displayContent = attsText + (content ? `\n\n${content}` : "");
     }
 
+    // Auto-create conversation if starting from /chat without an existing ID
+    let currentConversationId = activeConversationId;
+    if (!currentConversationId) {
+      try {
+        const titleSnippet = content.trim().slice(0, 35) || "Percakapan Baru";
+        const convRes = await createConversationAction({
+          title: titleSnippet,
+          model: effectiveModel,
+          provider: effectiveProvider as any,
+        });
+        if (convRes?.conversationId) {
+          currentConversationId = convRes.conversationId;
+          setActiveConversationId(currentConversationId);
+          window.history.replaceState(null, "", `/chat/${currentConversationId}`);
+        }
+      } catch {
+        // continue even if conversation persistence fails
+      }
+    }
+
     const userMessage: MockMessage = {
       id: `msg-${Date.now()}`,
-      conversationId: options.conversationId || "new-chat",
+      conversationId: currentConversationId || "new-chat",
       role: "user",
       content: displayContent,
-      createdAt: new Date().toLocaleTimeString("id-ID", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }) + " WIB",
+      createdAt:
+        new Date().toLocaleTimeString("id-ID", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }) + " WIB",
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
 
     // Persist user message to Supabase
-    if (options.conversationId) {
+    if (currentConversationId) {
       saveMessageAction({
-        conversationId: options.conversationId,
+        conversationId: currentConversationId,
         role: "user",
         content: displayContent,
       });
@@ -138,15 +179,16 @@ export function useChat(options: UseChatOptions = {}) {
     const assistantMessageId = `assistant-${Date.now()}`;
     const assistantPlaceholder: MockMessage = {
       id: assistantMessageId,
-      conversationId: options.conversationId || "new-chat",
+      conversationId: currentConversationId || "new-chat",
       role: "assistant",
       content: "",
-      model: chatOptions?.isImageGen ? "dall-e-3" : options.model || "llama-3.3-70b-versatile",
-      provider: chatOptions?.isImageGen ? "openai" : options.provider || "groq",
-      createdAt: new Date().toLocaleTimeString("id-ID", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }) + " WIB",
+      model: chatOptions?.isImageGen ? "dall-e-3" : effectiveModel,
+      provider: chatOptions?.isImageGen ? "openai" : effectiveProvider,
+      createdAt:
+        new Date().toLocaleTimeString("id-ID", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }) + " WIB",
     };
 
     setMessages((prev) => [...prev, assistantPlaceholder]);
@@ -159,7 +201,7 @@ export function useChat(options: UseChatOptions = {}) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             prompt: content,
-            conversationId: options.conversationId,
+            conversationId: currentConversationId,
           }),
         });
         const data = await res.json();
@@ -174,7 +216,10 @@ export function useChat(options: UseChatOptions = {}) {
           setMessages((prev) =>
             prev.map((msg) =>
               msg.id === assistantMessageId
-                ? { ...msg, content: `Gagal membuat gambar: ${data.error || "Terjadi kesalahan."}` }
+                ? {
+                    ...msg,
+                    content: `⚠️ **Gagal membuat gambar:** ${data.error || "Terjadi kesalahan."}`,
+                  }
                 : msg
             )
           );
@@ -183,7 +228,10 @@ export function useChat(options: UseChatOptions = {}) {
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === assistantMessageId
-              ? { ...msg, content: "Terjadi kesalahan saat memproses pembuatan gambar AI." }
+              ? {
+                  ...msg,
+                  content: "⚠️ Terjadi kesalahan saat memproses pembuatan gambar AI.",
+                }
               : msg
           )
         );
@@ -193,10 +241,9 @@ export function useChat(options: UseChatOptions = {}) {
       return;
     }
 
-    // Handle Standard LLM / Web Search Streaming
+    // Handle Standard Real LLM Streaming
     abortControllerRef.current = new AbortController();
 
-    // Prepare prompt payload with any extracted text from attachments
     let contextAugmentedContent = content;
     if (chatOptions?.attachments) {
       for (const att of chatOptions.attachments) {
@@ -220,19 +267,26 @@ export function useChat(options: UseChatOptions = {}) {
         signal: abortControllerRef.current.signal,
         body: JSON.stringify({
           messages: payloadMessages,
-          conversationId: options.conversationId,
-          model: options.model || "llama-3.3-70b-versatile",
-          provider: options.provider || "groq",
+          conversationId: currentConversationId,
+          model: effectiveModel,
+          provider: effectiveProvider,
           webSearch: chatOptions?.webSearch || false,
         }),
       });
 
       if (!response.ok) {
-        throw new Error("Gagal mengambil respons streaming.");
+        let errorMsg = "Gagal mengambil respons streaming dari model AI.";
+        try {
+          const errData = await response.json();
+          if (errData.error) errorMsg = errData.error;
+        } catch {
+          // not json
+        }
+        throw new Error(errorMsg);
       }
 
       if (!response.body) {
-        throw new Error("Respons streaming kosong.");
+        throw new Error("Respons streaming kosong dari server.");
       }
 
       const reader = response.body.getReader();
@@ -261,19 +315,42 @@ export function useChat(options: UseChatOptions = {}) {
             } catch {
               // ignore parse errors
             }
+          } else if (line.startsWith("3:")) {
+            try {
+              const errPiece = JSON.parse(line.slice(2));
+              accumulatedText +=
+                (accumulatedText ? "\n\n" : "") + `⚠️ **Error Model AI:** ${errPiece}`;
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, content: accumulatedText }
+                    : msg
+                )
+              );
+            } catch {
+              // ignore
+            }
           }
         }
       }
+
+      if (!accumulatedText.trim()) {
+        throw new Error(
+          "Model AI tidak mengembalikan teks respons. Silakan periksa konfigurasi API Key Anda."
+        );
+      }
     } catch (err: unknown) {
       if ((err as Error).name !== "AbortError") {
+        const errorContent =
+          err instanceof Error
+            ? err.message
+            : "Mohon maaf, terjadi kendala saat streaming respons dari model AI.";
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === assistantMessageId
               ? {
                   ...msg,
-                  content:
-                    msg.content ||
-                    "Mohon maaf, terjadi kendala saat streaming respons. Silakan coba lagi.",
+                  content: msg.content ? `${msg.content}\n\n${errorContent}` : errorContent,
                 }
               : msg
           )
@@ -299,5 +376,6 @@ export function useChat(options: UseChatOptions = {}) {
     isLoading,
     sendMessage,
     stop,
+    activeConversationId,
   };
 }

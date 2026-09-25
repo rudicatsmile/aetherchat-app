@@ -16,12 +16,14 @@ export async function POST(req: Request) {
     } = await req.json();
 
     const supabase = (await createClient()) as any;
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
     let customApiKey: string | undefined = undefined;
     let customPersona: string | undefined = undefined;
 
-    // Check if user has BYOK and persona enabled
+    // Check if authenticated user has BYOK and custom persona enabled
     if (user) {
       const { data: settings } = await supabase
         .from("user_settings")
@@ -46,116 +48,142 @@ export async function POST(req: Request) {
           try {
             customApiKey = decryptApiKey(apiKeyRecord.encrypted_key);
           } catch {
-            // fallback
+            // ignore decryption failure
           }
         }
       }
     }
 
-    const system = buildSystemPrompt(customPersona);
-
-    // Check if real provider API key is present
-    const envKey =
+    // Determine the active API key from BYOK or server environment variable
+    let envKey =
       provider === "groq"
         ? process.env.GROQ_API_KEY
         : provider === "openai"
         ? process.env.OPENAI_API_KEY
         : process.env.OPENROUTER_API_KEY;
 
-    const hasRealApiKey = Boolean(
-      customApiKey || (envKey && !envKey.includes("xxxx") && !envKey.includes("dummy"))
-    );
-
-    if (hasRealApiKey) {
-      const selectedModel = getAiModel({
-        provider: provider as "groq" | "openai" | "openrouter",
-        modelId: model,
-        customApiKey,
-      });
-
-      const result = streamText({
-        model: selectedModel,
-        system,
-        messages,
-        tools: webSearch ? { webSearch: webSearchTool } : undefined,
-        async onFinish({ text, usage }: any) {
-          // Save assistant message to Supabase
-          if (user && conversationId) {
-            try {
-              await supabase.from("messages").insert({
-                conversation_id: conversationId,
-                user_id: user.id,
-                role: "assistant",
-                content: text,
-                model,
-                provider,
-                prompt_tokens: usage?.promptTokens || usage?.inputTokens || 0,
-                completion_tokens: usage?.completionTokens || usage?.outputTokens || 0,
-                total_tokens: usage?.totalTokens || 0,
-              });
-            } catch {
-              // ignore
-            }
-          }
-        },
-      });
-
-      return result.toDataStreamResponse();
+    // Treat dummy/placeholder values as unset
+    if (
+      envKey &&
+      (envKey.includes("xxxx") ||
+        envKey.includes("dummy") ||
+        envKey.includes("your_groq_api_key") ||
+        envKey === "gsk_dummy")
+    ) {
+      envKey = undefined;
     }
 
-    // High quality simulated stream for development when API keys are not yet configured in .env.local
-    const latestUserMessage = messages[messages.length - 1]?.content || "";
-    const simulatedResponse = `Terima kasih atas pertanyaanmu mengenai **"${latestUserMessage}"**!
+    const activeApiKey = customApiKey || envKey;
 
-Berikut penjelasan komprehensif dari AetherChat:
-1. **Analisis Kebutuhan**: Model AI memproses query Anda dengan konteks terisolasi dan aman.
-2. **Efisiensi Streaming**: Token di-stream secara bertahap untuk menjaga responsivitas antarmuka tanpa buffering.
-3. **Kesiapan Ekosistem**: Konfigurasi database Supabase PostgreSQL, enkripsi BYOK, dan streaming Vercel AI SDK telah aktif.
+    // If no valid API key is available, return an informative error (NO fake template)
+    if (!activeApiKey) {
+      const providerUpper = provider.toUpperCase();
+      const envVarName =
+        provider === "groq"
+          ? "GROQ_API_KEY"
+          : provider === "openai"
+          ? "OPENAI_API_KEY"
+          : "OPENROUTER_API_KEY";
 
-\`\`\`typescript
-// Contoh simulasi pipeline AetherChat
-export async function processAetherStream(input: string) {
-  const stream = await streamText({
-    model: getAiModel({ provider: '${provider}', modelId: '${model}' }),
-    prompt: input,
-  });
-  return stream;
-}
-\`\`\`
+      const providerUrl =
+        provider === "groq"
+          ? "https://console.groq.com/keys"
+          : provider === "openai"
+          ? "https://platform.openai.com/api-keys"
+          : "https://openrouter.ai/keys";
 
-Apakah ada poin teknis atau topik lain yang ingin Anda eksplorasi lebih lanjut?`;
+      const errorMessage = `⚠️ **API Key Belum Dikonfigurasi**
 
-    // Stream the text via SSE
-    const encoder = new TextEncoder();
-    const customReadableStream = new ReadableStream({
-      async start(controller) {
-        // AI SDK data stream protocol format: 0:"token"
-        const chunks = simulatedResponse.split(" ");
-        for (const word of chunks) {
-          const formatted = `0:${JSON.stringify(word + " ")}\n`;
-          controller.enqueue(encoder.encode(formatted));
-          await new Promise((r) => setTimeout(r, 25));
+Model AI **${model}** (${providerUpper}) memerlukan API Key yang valid untuk memproses jawaban.
+
+Silakan lakukan salah satu langkah berikut:
+1. **Atur di file server**: Buka file \`.env.local\` dan isi nilai \`${envVarName}=...\` dengan API key Anda.
+2. **Atur di antarmuka (BYOK)**: Kunjungi menu **[Pengaturan API Key](/settings/api-keys)** dan simpan API key pribadi Anda.
+
+🔗 *Dapatkan API Key ${providerUpper} gratis di [${providerUrl}](${providerUrl}).*`;
+
+      return new Response(JSON.stringify({ error: errorMessage }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const system = buildSystemPrompt(customPersona);
+
+    const selectedModel = getAiModel({
+      provider: provider as "groq" | "openai" | "openrouter",
+      modelId: model,
+      customApiKey: activeApiKey,
+    });
+
+    const result = streamText({
+      model: selectedModel,
+      system,
+      messages,
+      tools: webSearch ? { webSearch: webSearchTool } : undefined,
+      async onFinish({ text, usage }: any) {
+        // Persist real assistant message to Supabase
+        if (user && conversationId && text) {
+          try {
+            await supabase.from("messages").insert({
+              conversation_id: conversationId,
+              user_id: user.id,
+              role: "assistant",
+              content: text,
+              model,
+              provider,
+              prompt_tokens: usage?.promptTokens || usage?.inputTokens || 0,
+              completion_tokens: usage?.completionTokens || usage?.outputTokens || 0,
+              total_tokens: usage?.totalTokens || 0,
+            });
+
+            // Update daily usage stats
+            const todayStr = new Date().toISOString().split("T")[0];
+            const { data: existingUsage } = await supabase
+              .from("usage_logs")
+              .select("id, message_count, tokens_used")
+              .eq("user_id", user.id)
+              .eq("usage_date", todayStr)
+              .single();
+
+            if (existingUsage) {
+              await supabase
+                .from("usage_logs")
+                .update({
+                  message_count: existingUsage.message_count + 1,
+                  tokens_used: existingUsage.tokens_used + (usage?.totalTokens || 0),
+                })
+                .eq("id", existingUsage.id);
+            } else {
+              await supabase.from("usage_logs").insert({
+                user_id: user.id,
+                usage_date: todayStr,
+                message_count: 1,
+                tokens_used: usage?.totalTokens || 0,
+              });
+            }
+          } catch {
+            // ignore persistence error
+          }
         }
-        controller.enqueue(
-          encoder.encode(
-            `d:{"finishReason":"stop","usage":{"promptTokens":20,"completionTokens":120}}\n`
-          )
-        );
-        controller.close();
       },
     });
 
-    return new Response(customReadableStream, {
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "X-Vercel-AI-Data-Stream": "v1",
+    return result.toDataStreamResponse({
+      getErrorMessage: (err: unknown) => {
+        return err instanceof Error ? err.message : "Terjadi kesalahan saat streaming dari model AI.";
       },
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Terjadi kesalahan pada server AI";
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        error: `⚠️ **Gagal Memanggil Model AI:**\n\n${message}\n\n*Silakan periksa kembali konfigurasi API Key atau model yang dipilih.*`,
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 }
