@@ -74,32 +74,72 @@ export async function POST(req: Request) {
       envKey = undefined;
     }
 
-    const activeApiKey = (byokApiKey && byokApiKey.trim()) || customApiKey || envKey;
+    let activeApiKey = (byokApiKey && byokApiKey.trim()) || customApiKey || envKey;
+
+    let finalProvider = provider;
+    let finalModel = model;
+
+    // Smart key format detection to prevent provider mismatch
+    if (activeApiKey) {
+      if (activeApiKey.startsWith("gsk_") && finalProvider !== "groq") {
+        finalProvider = "groq";
+        if (finalModel === "gpt-4o-mini" || finalModel.includes("mistral")) {
+          finalModel = "llama-3.3-70b-versatile";
+        }
+      } else if (
+        (activeApiKey.startsWith("sk-proj-") ||
+          (activeApiKey.startsWith("sk-") && !activeApiKey.startsWith("sk-or-"))) &&
+        finalProvider !== "openai"
+      ) {
+        finalProvider = "openai";
+        if (finalModel === "llama-3.3-70b-versatile" || finalModel.includes("mistral")) {
+          finalModel = "gpt-4o-mini";
+        }
+      } else if (activeApiKey.startsWith("sk-or-") && finalProvider !== "openrouter") {
+        finalProvider = "openrouter";
+        finalModel = "mistralai/mistral-large-2407";
+      }
+    } else {
+      // Check if server environment has any valid provider key as fallback
+      if (process.env.OPENAI_API_KEY && !process.env.OPENAI_API_KEY.includes("xxxx")) {
+        finalProvider = "openai";
+        finalModel = "gpt-4o-mini";
+        activeApiKey = process.env.OPENAI_API_KEY;
+      } else if (
+        process.env.GROQ_API_KEY &&
+        !process.env.GROQ_API_KEY.includes("dummy") &&
+        !process.env.GROQ_API_KEY.includes("xxxx")
+      ) {
+        finalProvider = "groq";
+        finalModel = "llama-3.3-70b-versatile";
+        activeApiKey = process.env.GROQ_API_KEY;
+      }
+    }
 
     // If no valid API key is available, return an informative error (NO fake template)
     if (!activeApiKey) {
-      const providerUpper = provider.toUpperCase();
+      const providerUpper = finalProvider.toUpperCase();
       const envVarName =
-        provider === "groq"
+        finalProvider === "groq"
           ? "GROQ_API_KEY"
-          : provider === "openai"
+          : finalProvider === "openai"
           ? "OPENAI_API_KEY"
           : "OPENROUTER_API_KEY";
 
       const providerUrl =
-        provider === "groq"
+        finalProvider === "groq"
           ? "https://console.groq.com/keys"
-          : provider === "openai"
+          : finalProvider === "openai"
           ? "https://platform.openai.com/api-keys"
           : "https://openrouter.ai/keys";
 
       const errorMessage = `⚠️ **API Key Belum Dikonfigurasi**
 
-Model AI **${model}** (${providerUpper}) memerlukan API Key yang valid untuk memproses jawaban.
+Model AI **${finalModel}** (${providerUpper}) memerlukan API Key yang valid untuk memproses jawaban.
 
 Silakan lakukan salah satu langkah berikut:
-1. **Atur di file server**: Buka file \`.env.local\` dan isi nilai \`${envVarName}=...\` dengan API key Anda.
-2. **Atur di antarmuka (BYOK)**: Kunjungi menu **[Pengaturan API Key](/settings/api-keys)** dan simpan API key pribadi Anda.
+1. **Atur di antarmuka (BYOK)**: Kunjungi menu **[Pengaturan API Key](/settings/api-keys)** dan simpan API key pribadi Anda.
+2. **Atur di file server**: Buka file \`.env.local\` dan isi nilai \`${envVarName}=...\` dengan API key Anda.
 
 🔗 *Dapatkan API Key ${providerUpper} gratis di [${providerUrl}](${providerUrl}).*`;
 
@@ -112,8 +152,8 @@ Silakan lakukan salah satu langkah berikut:
     const system = buildSystemPrompt(customPersona);
 
     const selectedModel = getAiModel({
-      provider: provider as "groq" | "openai" | "openrouter",
-      modelId: model,
+      provider: finalProvider as "groq" | "openai" | "openrouter",
+      modelId: finalModel,
       customApiKey: activeApiKey,
     });
 
@@ -131,8 +171,8 @@ Silakan lakukan salah satu langkah berikut:
               user_id: user.id,
               role: "assistant",
               content: text,
-              model,
-              provider,
+              model: finalModel,
+              provider: finalProvider,
               prompt_tokens: usage?.promptTokens || usage?.inputTokens || 0,
               completion_tokens: usage?.completionTokens || usage?.outputTokens || 0,
               total_tokens: usage?.totalTokens || 0,

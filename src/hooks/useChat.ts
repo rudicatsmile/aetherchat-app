@@ -262,12 +262,31 @@ export function useChat(options: UseChatOptions = {}) {
 
     // Retrieve any BYOK API key saved in browser localStorage
     let clientByokKey: string | undefined = undefined;
+    let targetProvider = effectiveProvider;
+    let targetModel = effectiveModel;
+
     if (typeof window !== "undefined") {
       const byokEnabled = localStorage.getItem("aether_byok_enabled") !== "false";
       if (byokEnabled) {
-        const stored = localStorage.getItem(`aether_byok_${effectiveProvider}`);
+        const stored = localStorage.getItem(`aether_byok_${targetProvider}`);
         if (stored && stored.trim()) {
           clientByokKey = stored.trim();
+        } else {
+          // Fallback to any provider that has a configured key
+          const candidates: Array<{ p: "openai" | "groq" | "openrouter"; m: string }> = [
+            { p: "openai", m: "gpt-4o-mini" },
+            { p: "groq", m: "llama-3.3-70b-versatile" },
+            { p: "openrouter", m: "mistralai/mistral-large-2407" },
+          ];
+          for (const cand of candidates) {
+            const candKey = localStorage.getItem(`aether_byok_${cand.p}`);
+            if (candKey && candKey.trim()) {
+              targetProvider = cand.p;
+              targetModel = cand.m;
+              clientByokKey = candKey.trim();
+              break;
+            }
+          }
         }
       }
     }
@@ -280,8 +299,8 @@ export function useChat(options: UseChatOptions = {}) {
         body: JSON.stringify({
           messages: payloadMessages,
           conversationId: currentConversationId,
-          model: effectiveModel,
-          provider: effectiveProvider,
+          model: targetModel,
+          provider: targetProvider,
           webSearch: chatOptions?.webSearch || false,
           byokApiKey: clientByokKey,
         }),

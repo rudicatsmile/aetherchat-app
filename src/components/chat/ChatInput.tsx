@@ -93,6 +93,35 @@ export function ChatInput({
   });
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      const groqKey = localStorage.getItem("aether_byok_groq");
+      const openaiKey = localStorage.getItem("aether_byok_openai");
+      const openrouterKey = localStorage.getItem("aether_byok_openrouter");
+      const lastActive = localStorage.getItem("aether_active_provider");
+
+      if (lastActive === "openai" || (!groqKey && openaiKey)) {
+        setSelectedModel({
+          name: "GPT-4o Mini",
+          id: "gpt-4o-mini",
+          provider: "openai",
+        });
+      } else if (lastActive === "openrouter" || (!groqKey && !openaiKey && openrouterKey)) {
+        setSelectedModel({
+          name: "Mistral Large",
+          id: "mistral-large-2407",
+          provider: "openrouter",
+        });
+      } else if (groqKey) {
+        setSelectedModel({
+          name: "Llama 3.3 70B",
+          id: "llama-3.3-70b-versatile",
+          provider: "groq",
+        });
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 180)}px`;
@@ -359,13 +388,16 @@ export function ChatInput({
                   <DropdownMenuLabel className="text-xs">Pilih Model AI</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    onClick={() =>
+                    onClick={() => {
                       setSelectedModel({
                         name: "Llama 3.3 70B",
                         id: "llama-3.3-70b-versatile",
                         provider: "groq",
-                      })
-                    }
+                      });
+                      if (typeof window !== "undefined") {
+                        localStorage.setItem("aether_active_provider", "groq");
+                      }
+                    }}
                   >
                     <div className="flex flex-col">
                        <span className="font-semibold text-xs">Llama 3.3 70B Versatile</span>
@@ -373,13 +405,16 @@ export function ChatInput({
                     </div>
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onClick={() =>
+                    onClick={() => {
                       setSelectedModel({
                         name: "GPT-4o Mini",
                         id: "gpt-4o-mini",
                         provider: "openai",
-                      })
-                    }
+                      });
+                      if (typeof window !== "undefined") {
+                        localStorage.setItem("aether_active_provider", "openai");
+                      }
+                    }}
                   >
                     <div className="flex flex-col">
                        <span className="font-semibold text-xs">GPT-4o Mini</span>
@@ -387,13 +422,16 @@ export function ChatInput({
                     </div>
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onClick={() =>
+                    onClick={() => {
                       setSelectedModel({
                         name: "Mistral Large",
                         id: "mistral-large-2407",
                         provider: "openrouter",
-                      })
-                    }
+                      });
+                      if (typeof window !== "undefined") {
+                        localStorage.setItem("aether_active_provider", "openrouter");
+                      }
+                    }}
                   >
                     <div className="flex flex-col">
                        <span className="font-semibold text-xs">Mistral Large</span>
