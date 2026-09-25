@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -28,7 +28,7 @@ import { FolderTree } from "./FolderTree";
 import { ConversationList } from "./ConversationList";
 import { useConversations } from "@/hooks/useConversations";
 import { useUsage } from "@/hooks/useUsage";
-import { CURRENT_MOCK_USER } from "@/lib/mock-data";
+import { createClient } from "@/lib/supabase/client";
 import { signOutAction } from "@/actions/auth";
 
 interface SidebarProps {
@@ -37,6 +37,52 @@ interface SidebarProps {
 
 export function Sidebar({ onCloseMobile }: SidebarProps) {
   const router = useRouter();
+
+  const [currentUser, setCurrentUser] = useState<{
+    email?: string;
+    fullName?: string;
+    avatarUrl?: string;
+    role?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    async function loadUser() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single();
+
+        setCurrentUser({
+          email: user.email,
+          fullName:
+            profile?.full_name ||
+            user.user_metadata?.full_name ||
+            (user.email ? user.email.split("@")[0] : "Pengguna"),
+          avatarUrl: profile?.avatar_url || user.user_metadata?.avatar_url,
+          role: profile?.role || "user",
+        });
+      } else {
+        setCurrentUser(null);
+      }
+    }
+    loadUser();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(() => {
+      loadUser();
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const {
     conversations,
@@ -157,60 +203,72 @@ export function Sidebar({ onCloseMobile }: SidebarProps) {
         </div>
 
         {/* User Account Dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="flex w-full items-center gap-2.5 rounded-xl p-1.5 hover:bg-secondary/70 transition-colors text-left group">
-              <Avatar className="h-8 w-8 border border-border/70">
-                <AvatarImage src={CURRENT_MOCK_USER.avatarUrl} alt={CURRENT_MOCK_USER.fullName} />
-                <AvatarFallback>RP</AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="truncate text-xs font-semibold text-foreground">
-                  {CURRENT_MOCK_USER.fullName}
-                </p>
-                <p className="truncate text-[10px] text-muted-foreground">
-                  {CURRENT_MOCK_USER.email}
-                </p>
-              </div>
-              <Settings className="h-4 w-4 text-muted-foreground group-hover:text-foreground shrink-0 transition-colors" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56 mb-2">
-            <DropdownMenuLabel className="text-xs">Akun Anda</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/settings/general" className="cursor-pointer">
-                <Settings className="h-4 w-4 mr-2 text-muted-foreground" />
-                <span>Pengaturan Akun</span>
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/settings/usage" className="cursor-pointer">
-                <Flame className="h-4 w-4 mr-2 text-amber-400" />
-                <span>Dashboard Kuota</span>
-              </Link>
-            </DropdownMenuItem>
-            {CURRENT_MOCK_USER.role === "admin" && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/admin/dashboard" className="cursor-pointer text-violet-400 focus:text-violet-300">
-                    <ShieldAlert className="h-4 w-4 mr-2" />
-                    <span>Panel Administrator</span>
-                  </Link>
-                </DropdownMenuItem>
-              </>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => signOutAction()}
-              className="cursor-pointer text-destructive focus:text-destructive"
-            >
-              <LogOut className="h-4 w-4 mr-2" />
-              <span>Keluar (Sign Out)</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {currentUser ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex w-full items-center gap-2.5 rounded-xl p-1.5 hover:bg-secondary/70 transition-colors text-left group">
+                <Avatar className="h-8 w-8 border border-border/70">
+                  {currentUser.avatarUrl && (
+                    <AvatarImage src={currentUser.avatarUrl} alt={currentUser.fullName || "User"} />
+                  )}
+                  <AvatarFallback className="bg-primary/20 text-primary font-bold text-xs">
+                    {currentUser.fullName ? currentUser.fullName.slice(0, 2).toUpperCase() : "U"}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <p className="truncate text-xs font-semibold text-foreground">
+                    {currentUser.fullName}
+                  </p>
+                  <p className="truncate text-[10px] text-muted-foreground">
+                    {currentUser.email}
+                  </p>
+                </div>
+                <Settings className="h-4 w-4 text-muted-foreground group-hover:text-foreground shrink-0 transition-colors" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 mb-2">
+              <DropdownMenuLabel className="text-xs">Akun Anda</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/settings/general" className="cursor-pointer">
+                  <Settings className="h-4 w-4 mr-2 text-muted-foreground" />
+                  <span>Pengaturan Akun</span>
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/settings/usage" className="cursor-pointer">
+                  <Flame className="h-4 w-4 mr-2 text-amber-400" />
+                  <span>Dashboard Kuota</span>
+                </Link>
+              </DropdownMenuItem>
+              {currentUser.role === "admin" && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/admin/dashboard" className="cursor-pointer text-violet-400 focus:text-violet-300">
+                      <ShieldAlert className="h-4 w-4 mr-2" />
+                      <span>Panel Administrator</span>
+                    </Link>
+                  </DropdownMenuItem>
+                </>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => signOutAction()}
+                className="cursor-pointer text-destructive focus:text-destructive"
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                <span>Keluar (Sign Out)</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <div className="flex items-center gap-2 pt-1">
+            <Button variant="outline" size="sm" asChild className="w-full text-xs h-9 justify-center">
+              <Link href="/login">Masuk ke Akun</Link>
+            </Button>
+          </div>
+        )}
       </div>
     </aside>
   );

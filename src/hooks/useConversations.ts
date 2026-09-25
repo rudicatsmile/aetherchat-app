@@ -10,12 +10,12 @@ import {
   softDeleteConversationAction,
 } from "@/actions/conversations";
 import { getFoldersAction, createFolderAction } from "@/actions/folders";
-import { MockConversation, MockFolder, MOCK_CONVERSATIONS, MOCK_FOLDERS } from "@/lib/mock-data";
+import { MockConversation, MockFolder } from "@/lib/mock-data";
 import { createClient } from "@/lib/supabase/client";
 
 export function useConversations() {
-  const [conversations, setConversations] = useState<MockConversation[]>(MOCK_CONVERSATIONS);
-  const [folders, setFolders] = useState<MockFolder[]>(MOCK_FOLDERS);
+  const [conversations, setConversations] = useState<MockConversation[]>([]);
+  const [folders, setFolders] = useState<MockFolder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -25,10 +25,11 @@ export function useConversations() {
           getConversationsAction(),
           getFoldersAction(),
         ]);
-        if (loadedConvs && loadedConvs.length > 0) setConversations(loadedConvs);
-        if (loadedFolders && loadedFolders.length > 0) setFolders(loadedFolders);
+        setConversations(loadedConvs || []);
+        setFolders(loadedFolders || []);
       } catch {
-        // use fallback mock data
+        setConversations([]);
+        setFolders([]);
       } finally {
         setIsLoading(false);
       }

@@ -27,6 +27,28 @@ export function useChat(options: UseChatOptions = {}) {
   const [isLoading, setIsLoading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Load existing real messages from Supabase on mount
+  useEffect(() => {
+    if (!options.conversationId) return;
+
+    let isMounted = true;
+    async function loadHistory() {
+      try {
+        const history = await getMessagesAction(options.conversationId!);
+        if (isMounted && history && history.length > 0) {
+          setMessages(history);
+        }
+      } catch {
+        // ignore
+      }
+    }
+    loadHistory();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [options.conversationId]);
+
   // Subscribe to Supabase Realtime messages channel for this conversation
   useEffect(() => {
     if (!options.conversationId) return;

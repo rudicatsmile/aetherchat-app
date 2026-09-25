@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { CreateFolderSchema } from "@/lib/validators";
-import { MOCK_FOLDERS, MockFolder } from "@/lib/mock-data";
+import { MockFolder } from "@/lib/mock-data";
 import { revalidatePath } from "next/cache";
 
 export async function getFoldersAction(): Promise<MockFolder[]> {
@@ -11,7 +11,7 @@ export async function getFoldersAction(): Promise<MockFolder[]> {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
-      return MOCK_FOLDERS;
+      return [];
     }
 
     const { data, error } = await supabase
@@ -21,7 +21,7 @@ export async function getFoldersAction(): Promise<MockFolder[]> {
       .order("created_at", { ascending: true });
 
     if (error || !data || data.length === 0) {
-      return MOCK_FOLDERS;
+      return [];
     }
 
     return data.map((f: any) => ({
@@ -32,7 +32,7 @@ export async function getFoldersAction(): Promise<MockFolder[]> {
       parentId: f.parent_id,
     }));
   } catch {
-    return MOCK_FOLDERS;
+    return [];
   }
 }
 

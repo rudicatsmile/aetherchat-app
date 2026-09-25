@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { MOCK_CONVERSATIONS, MOCK_MESSAGES_CONV_01 } from "@/lib/mock-data";
 import JSZip from "jszip";
 
 export async function GET(req: Request) {
@@ -10,21 +9,45 @@ export async function GET(req: Request) {
     const conversationId = searchParams.get("conversationId");
 
     const supabase = (await createClient()) as any;
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    // Fetch conversations to export
-    let convList = MOCK_CONVERSATIONS;
+    // Fetch conversations and their messages from Supabase
+    let convList: any[] = [];
     if (user) {
-      const { data } = await supabase
+      let query = supabase
         .from("conversations")
-        .select("*")
+        .select("*, messages(*)")
         .eq("user_id", user.id)
-        .is("deleted_at", null);
-      if (data && data.length > 0) convList = data;
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false });
+
+      if (conversationId) {
+        query = query.eq("id", conversationId);
+      }
+      const { data } = await query;
+      if (data && data.length > 0) {
+        convList = data.map((c: any) => ({
+          ...c,
+          messages: Array.isArray(c.messages)
+            ? c.messages.sort(
+                (a: any, b: any) =>
+                  new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+              )
+            : [],
+        }));
+      }
     }
 
-    if (conversationId) {
-      convList = convList.filter((c: any) => c.id === conversationId);
+    if (convList.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Tidak ada data percakapan nyata yang ditemukan untuk diekspor. Silakan mulai chat terlebih dahulu.",
+        },
+        { status: 404 }
+      );
     }
 
     const timestamp = Date.now();
@@ -34,13 +57,26 @@ export async function GET(req: Request) {
       let mdContent = `# AetherChat Export - ${new Date().toLocaleDateString("id-ID")}\n\n`;
 
       for (const conv of convList) {
-        const lastUpdated = conv.updatedAt || (conv as any).updated_at || "Baru saja";
+        const lastUpdated = conv.updated_at
+          ? new Date(conv.updated_at).toLocaleString("id-ID")
+          : "Baru saja";
+        mdContent += `## ${conv.title || "Percakapan"}\n`;
         mdContent += `*Model: ${conv.model} | Terakhir Diperbarui: ${lastUpdated}*\n\n---\n\n`;
 
-        const messages = MOCK_MESSAGES_CONV_01;
-        for (const m of messages) {
-          const roleLabel = m.role === "user" ? "Pengguna" : "AetherChat AI";
-          mdContent += `### [${m.createdAt || "WIB"}] ${roleLabel}:\n${m.content}\n\n`;
+        const messages = conv.messages || [];
+        if (messages.length === 0) {
+          mdContent += `*(Belum ada pesan dalam percakapan ini)*\n\n`;
+        } else {
+          for (const m of messages) {
+            const roleLabel = m.role === "user" ? "Pengguna" : "AetherChat AI";
+            const timeStr = m.created_at
+              ? new Date(m.created_at).toLocaleTimeString("id-ID", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }) + " WIB"
+              : "";
+            mdContent += `### [${timeStr}] ${roleLabel}:\n${m.content}\n\n`;
+          }
         }
         mdContent += `\n=========================================\n\n`;
       }
@@ -60,8 +96,20 @@ export async function GET(req: Request) {
         version: "1.0",
         totalConversations: convList.length,
         conversations: convList.map((c: any) => ({
-          ...c,
-          messages: MOCK_MESSAGES_CONV_01,
+          id: c.id,
+          title: c.title,
+          model: c.model,
+          provider: c.provider,
+          createdAt: c.created_at,
+          updatedAt: c.updated_at,
+          messages: (c.messages || []).map((m: any) => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            model: m.model,
+            createdAt: m.created_at,
+            totalTokens: m.total_tokens,
+          })),
         })),
       };
 
@@ -98,16 +146,20 @@ export async function GET(req: Request) {
   ${convList
     .map(
       (c: any) => `
-    <h2>${c.title}</h2>
-    <span class="badge">Model: ${c.model}</span>
-    ${MOCK_MESSAGES_CONV_01.map(
-      (m) => `
+    <h2>${c.title || "Percakapan"}</h2>
+    <span class="badge">Model: ${c.model || "AI"}</span>
+    ${(c.messages || [])
+      .map(
+        (m: any) => `
       <div class="${m.role === "user" ? "bubble-user" : "bubble-ai"}">
-        <div class="timestamp">${m.role === "user" ? "👤 Pengguna" : "✨ AetherChat AI"} • ${m.createdAt}</div>
-        <div style="margin-top: 8px;">${m.content.replace(/\n/g, "<br>")}</div>
+        <div class="timestamp">${m.role === "user" ? "👤 Pengguna" : "✨ AetherChat AI"} • ${
+          m.created_at ? new Date(m.created_at).toLocaleString("id-ID") : ""
+        }</div>
+        <div style="margin-top: 8px;">${String(m.content || "").replace(/\n/g, "<br>")}</div>
       </div>
     `
-    ).join("")}
+      )
+      .join("")}
     <hr style="border: 1px solid #27272a; margin: 32px 0;">
   `
     )
@@ -127,7 +179,6 @@ export async function GET(req: Request) {
     if (format === "zip") {
       const zip = new JSZip();
 
-      // Add readme and individual markdown files for each conversation
       zip.file(
         "README.txt",
         `Arsip Percakapan AetherChat\nDiekspor: ${new Date().toISOString()}\nTotal Percakapan: ${convList.length}`
@@ -137,10 +188,13 @@ export async function GET(req: Request) {
         const safeTitle = (conv.title || "percakapan")
           .replace(/[^a-zA-Z0-9_\-]/g, "_")
           .substring(0, 40);
-        let convMd = `# ${conv.title}\n\nModel: ${conv.model}\n\n---\n\n`;
+        let convMd = `# ${conv.title || "Percakapan"}\n\nModel: ${conv.model}\n\n---\n\n`;
 
-        for (const m of MOCK_MESSAGES_CONV_01) {
-          convMd += `### ${m.role === "user" ? "Pengguna" : "AetherChat AI"} (${m.createdAt}):\n${m.content}\n\n`;
+        for (const m of conv.messages || []) {
+          const timeStr = m.created_at
+            ? new Date(m.created_at).toLocaleString("id-ID")
+            : "";
+          convMd += `### ${m.role === "user" ? "Pengguna" : "AetherChat AI"} (${timeStr}):\n${m.content}\n\n`;
         }
 
         zip.file(`${safeTitle}.md`, convMd);
@@ -156,7 +210,10 @@ export async function GET(req: Request) {
       });
     }
 
-    return NextResponse.json({ error: "Format ekspor tidak didukung (gunakan md, json, html, atau zip)." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Format ekspor tidak didukung (gunakan md, json, html, atau zip)." },
+      { status: 400 }
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Gagal mengekspor data";
     return NextResponse.json({ error: message }, { status: 500 });

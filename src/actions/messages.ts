@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { CreateMessageSchema } from "@/lib/validators";
-import { MOCK_MESSAGES_CONV_01, MockMessage } from "@/lib/mock-data";
+import { MockMessage } from "@/lib/mock-data";
 
 export async function getMessagesAction(conversationId: string): Promise<MockMessage[]> {
   try {
@@ -14,7 +14,6 @@ export async function getMessagesAction(conversationId: string): Promise<MockMes
       .order("created_at", { ascending: true });
 
     if (error || !data || data.length === 0) {
-      if (conversationId === "conv-01") return MOCK_MESSAGES_CONV_01;
       return [];
     }
 
@@ -33,7 +32,6 @@ export async function getMessagesAction(conversationId: string): Promise<MockMes
       }) + " WIB",
     }));
   } catch {
-    if (conversationId === "conv-01") return MOCK_MESSAGES_CONV_01;
     return [];
   }
 }

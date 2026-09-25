@@ -3,7 +3,7 @@
 import React, { useRef, useEffect } from "react";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
-import { MOCK_MESSAGES_CONV_01, MOCK_SUGGESTED_PROMPTS } from "@/lib/mock-data";
+import { MOCK_SUGGESTED_PROMPTS } from "@/lib/mock-data";
 import { Sparkles, ArrowRight, Zap, Shield, Globe2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { useChat } from "@/hooks/useChat";
@@ -18,7 +18,7 @@ export function ChatWindow({ conversationId, initialTitle }: ChatWindowProps) {
 
   const { messages, isLoading, sendMessage, stop } = useChat({
     conversationId,
-    initialMessages: isWelcome ? [] : MOCK_MESSAGES_CONV_01,
+    initialMessages: [],
   });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);

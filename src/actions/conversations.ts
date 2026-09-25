@@ -6,7 +6,7 @@ import {
   UpdateConversationTitleSchema,
   MoveConversationFolderSchema,
 } from "@/lib/validators";
-import { MOCK_CONVERSATIONS, MockConversation } from "@/lib/mock-data";
+import { MockConversation } from "@/lib/mock-data";
 import { revalidatePath } from "next/cache";
 
 export async function getConversationsAction(): Promise<MockConversation[]> {
@@ -15,7 +15,7 @@ export async function getConversationsAction(): Promise<MockConversation[]> {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
-      return MOCK_CONVERSATIONS;
+      return [];
     }
 
     const { data, error } = await supabase
@@ -27,7 +27,7 @@ export async function getConversationsAction(): Promise<MockConversation[]> {
       .order("updated_at", { ascending: false });
 
     if (error || !data || data.length === 0) {
-      return MOCK_CONVERSATIONS;
+      return [];
     }
 
     return data.map((c: any) => ({
@@ -44,7 +44,7 @@ export async function getConversationsAction(): Promise<MockConversation[]> {
       }),
     }));
   } catch {
-    return MOCK_CONVERSATIONS;
+    return [];
   }
 }
 
@@ -55,16 +55,16 @@ export async function getConversationByIdAction(id: string) {
       .from("conversations")
       .select("*")
       .eq("id", id)
+      .is("deleted_at", null)
       .single();
 
     if (error || !data) {
-      const mock = MOCK_CONVERSATIONS.find((c) => c.id === id);
-      return mock || null;
+      return null;
     }
 
     return data;
   } catch {
-    return MOCK_CONVERSATIONS.find((c) => c.id === id) || null;
+    return null;
   }
 }
 
