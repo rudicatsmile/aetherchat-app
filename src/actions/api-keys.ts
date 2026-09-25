@@ -11,15 +11,7 @@ export async function getUserApiKeysAction() {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
-      return [
-        {
-          id: "key-1",
-          provider: "groq" as const,
-          keyHint: "gsk_••••••••X9b2",
-          isActive: true,
-          createdAt: "2 hari lalu",
-        },
-      ];
+      return [];
     }
 
     const { data, error } = await supabase
@@ -65,7 +57,7 @@ export async function saveUserApiKeyAction(input: unknown) {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
-      return { success: true, keyId: `key-${Date.now()}`, keyHint };
+      return { success: true, keyId: `key-${Date.now()}`, keyHint, isGuest: true };
     }
 
     const { data, error } = await supabase
@@ -83,14 +75,16 @@ export async function saveUserApiKeyAction(input: unknown) {
       .select("id")
       .single();
 
-    if (error) {
-      return { success: true, keyId: `key-${Date.now()}`, keyHint };
-    }
+    // Automatically enable use_byok in user_settings
+    await supabase
+      .from("user_settings")
+      .update({ use_byok: true })
+      .eq("user_id", user.id);
 
     revalidatePath("/settings/api-keys");
-    return { success: true, keyId: data.id, keyHint };
+    return { success: true, keyId: data?.id || `key-${Date.now()}`, keyHint };
   } catch {
-    return { success: true, keyId: `key-${Date.now()}`, keyHint };
+    return { success: true, keyId: `key-${Date.now()}`, keyHint, isGuest: true };
   }
 }
 

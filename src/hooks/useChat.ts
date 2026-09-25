@@ -260,6 +260,18 @@ export function useChat(options: UseChatOptions = {}) {
       })
     );
 
+    // Retrieve any BYOK API key saved in browser localStorage
+    let clientByokKey: string | undefined = undefined;
+    if (typeof window !== "undefined") {
+      const byokEnabled = localStorage.getItem("aether_byok_enabled") !== "false";
+      if (byokEnabled) {
+        const stored = localStorage.getItem(`aether_byok_${effectiveProvider}`);
+        if (stored && stored.trim()) {
+          clientByokKey = stored.trim();
+        }
+      }
+    }
+
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -271,6 +283,7 @@ export function useChat(options: UseChatOptions = {}) {
           model: effectiveModel,
           provider: effectiveProvider,
           webSearch: chatOptions?.webSearch || false,
+          byokApiKey: clientByokKey,
         }),
       });
 

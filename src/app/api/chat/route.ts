@@ -13,6 +13,7 @@ export async function POST(req: Request) {
       provider = "groq",
       conversationId,
       webSearch = false,
+      byokApiKey,
     } = await req.json();
 
     const supabase = (await createClient()) as any;
@@ -73,7 +74,7 @@ export async function POST(req: Request) {
       envKey = undefined;
     }
 
-    const activeApiKey = customApiKey || envKey;
+    const activeApiKey = (byokApiKey && byokApiKey.trim()) || customApiKey || envKey;
 
     // If no valid API key is available, return an informative error (NO fake template)
     if (!activeApiKey) {
