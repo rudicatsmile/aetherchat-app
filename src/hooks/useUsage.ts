@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { getUserUsageAction } from "@/actions/settings";
 
 export interface UsageQuota {
   messagesUsed: number;
@@ -14,14 +15,39 @@ export interface UsageQuota {
 
 export function useUsage() {
   const [quota, setQuota] = useState<UsageQuota>({
-    messagesUsed: 18,
+    messagesUsed: 0,
     messagesLimit: 50,
-    imageGenUsed: 2,
+    imageGenUsed: 0,
     imageGenLimit: 5,
-    webSearchUsed: 6,
+    webSearchUsed: 0,
     webSearchLimit: 20,
-    resetHoursRemaining: 13,
+    resetHoursRemaining: 12,
   });
+
+  const [isLoading, setIsLoading] = useState(true);
+
+  const fetchUsage = async () => {
+    try {
+      const realUsage = await getUserUsageAction();
+      setQuota({
+        messagesUsed: realUsage.messagesUsed,
+        messagesLimit: realUsage.messagesLimit,
+        imageGenUsed: realUsage.imageGenUsed,
+        imageGenLimit: realUsage.imageGenLimit,
+        webSearchUsed: realUsage.webSearchUsed,
+        webSearchLimit: realUsage.webSearchLimit,
+        resetHoursRemaining: realUsage.resetHoursRemaining,
+      });
+    } catch {
+      // keep current state
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUsage();
+  }, []);
 
   const incrementMessageUsage = () => {
     setQuota((prev) => ({
@@ -32,6 +58,8 @@ export function useUsage() {
 
   return {
     quota,
+    isLoading,
+    refreshUsage: fetchUsage,
     incrementMessageUsage,
   };
 }

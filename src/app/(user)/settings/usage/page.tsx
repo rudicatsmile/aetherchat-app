@@ -1,26 +1,50 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Flame, Clock, MessageSquare, ImageIcon, Globe, Zap, AlertCircle } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { getUserUsageAction } from "@/actions/settings";
 
 export default function UsageSettingsPage() {
-  const USAGE_DATA = {
-    messages: { used: 18, limit: 50, percent: 36 },
-    imageGen: { used: 2, limit: 5, percent: 40 },
-    webSearch: { used: 6, limit: 20, percent: 30 },
-  };
+  const [usage, setUsage] = useState({
+    messagesUsed: 0,
+    messagesLimit: 50,
+    imageGenUsed: 0,
+    imageGenLimit: 5,
+    webSearchUsed: 0,
+    webSearchLimit: 20,
+    resetHoursRemaining: 12,
+    weeklyStats: [
+      { day: "Min", messages: 0 },
+      { day: "Sen", messages: 0 },
+      { day: "Sel", messages: 0 },
+      { day: "Rab", messages: 0 },
+      { day: "Kam", messages: 0 },
+      { day: "Jum", messages: 0 },
+      { day: "Sab", messages: 0 },
+    ],
+  });
 
-  const WEEKLY_STATS = [
-    { day: "Sen", messages: 32 },
-    { day: "Sel", messages: 45 },
-    { day: "Rab", messages: 28 },
-    { day: "Kam", messages: 50 },
-    { day: "Jum", messages: 38 },
-    { day: "Sab", messages: 15 },
-    { day: "Min", messages: 18 },
-  ];
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await getUserUsageAction();
+        setUsage(res);
+      } catch {
+        // fallback
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  const msgPercent = Math.min(100, Math.round((usage.messagesUsed / usage.messagesLimit) * 100));
+  const imgPercent = Math.min(100, Math.round((usage.imageGenUsed / usage.imageGenLimit) * 100));
+  const searchPercent = Math.min(100, Math.round((usage.webSearchUsed / usage.webSearchLimit) * 100));
 
   return (
     <div className="space-y-6">
@@ -36,7 +60,7 @@ export default function UsageSettingsPage() {
 
         <Badge variant="outline" className="gap-1.5 py-1 px-2.5 font-mono text-xs">
           <Clock className="h-3.5 w-3.5 text-primary" />
-          <span>Reset Dalam: ~13 Jam</span>
+          <span>Reset Dalam: ~{usage.resetHoursRemaining} Jam</span>
         </Badge>
       </div>
 
@@ -50,17 +74,17 @@ export default function UsageSettingsPage() {
               Pesan Chat
             </span>
             <span className="text-xs font-bold font-mono text-foreground">
-              {USAGE_DATA.messages.used} / {USAGE_DATA.messages.limit}
+              {usage.messagesUsed} / {usage.messagesLimit}
             </span>
           </div>
           <div className="h-2 w-full bg-secondary rounded-full overflow-hidden mb-2">
             <div
               className="h-full bg-primary rounded-full transition-all duration-500"
-              style={{ width: `${USAGE_DATA.messages.percent}%` }}
+              style={{ width: `${msgPercent}%` }}
             />
           </div>
           <p className="text-[11px] text-muted-foreground">
-            Tersisa {USAGE_DATA.messages.limit - USAGE_DATA.messages.used} pesan gratis hari ini.
+            Tersisa {Math.max(0, usage.messagesLimit - usage.messagesUsed)} pesan gratis hari ini.
           </p>
         </Card>
 
@@ -72,17 +96,17 @@ export default function UsageSettingsPage() {
               Image AI (DALL-E)
             </span>
             <span className="text-xs font-bold font-mono text-foreground">
-              {USAGE_DATA.imageGen.used} / {USAGE_DATA.imageGen.limit}
+              {usage.imageGenUsed} / {usage.imageGenLimit}
             </span>
           </div>
           <div className="h-2 w-full bg-secondary rounded-full overflow-hidden mb-2">
             <div
               className="h-full bg-cyan-500 rounded-full transition-all duration-500"
-              style={{ width: `${USAGE_DATA.imageGen.percent}%` }}
+              style={{ width: `${imgPercent}%` }}
             />
           </div>
           <p className="text-[11px] text-muted-foreground">
-            Tersisa {USAGE_DATA.imageGen.limit - USAGE_DATA.imageGen.used} gambar gratis hari ini.
+            Tersisa {Math.max(0, usage.imageGenLimit - usage.imageGenUsed)} gambar gratis hari ini.
           </p>
         </Card>
 
@@ -94,17 +118,17 @@ export default function UsageSettingsPage() {
               Web Search Realtime
             </span>
             <span className="text-xs font-bold font-mono text-foreground">
-              {USAGE_DATA.webSearch.used} / {USAGE_DATA.webSearch.limit}
+              {usage.webSearchUsed} / {usage.webSearchLimit}
             </span>
           </div>
           <div className="h-2 w-full bg-secondary rounded-full overflow-hidden mb-2">
             <div
               className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-              style={{ width: `${USAGE_DATA.webSearch.percent}%` }}
+              style={{ width: `${searchPercent}%` }}
             />
           </div>
           <p className="text-[11px] text-muted-foreground">
-            Tersisa {USAGE_DATA.webSearch.limit - USAGE_DATA.webSearch.used} pencarian gratis hari ini.
+            Tersisa {Math.max(0, usage.webSearchLimit - usage.webSearchUsed)} pencarian gratis hari ini.
           </p>
         </Card>
       </div>
@@ -122,8 +146,8 @@ export default function UsageSettingsPage() {
         </CardHeader>
         <CardContent>
           <div className="flex items-end justify-between gap-3 h-40 pt-4 px-2">
-            {WEEKLY_STATS.map((item, i) => {
-              const heightPercent = (item.messages / 50) * 100;
+            {usage.weeklyStats.map((item, i) => {
+              const heightPercent = Math.min(100, Math.max(10, (item.messages / 50) * 100));
               return (
                 <div key={i} className="flex-1 flex flex-col items-center gap-2 group">
                   <span className="text-[10px] font-mono text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
@@ -132,7 +156,7 @@ export default function UsageSettingsPage() {
                   <div className="w-full bg-secondary rounded-lg h-28 flex items-end p-1">
                     <div
                       className="w-full bg-primary/80 group-hover:bg-primary rounded-md transition-all duration-300"
-                      style={{ height: `${heightPercent}%` }}
+                      style={{ height: `${item.messages > 0 ? heightPercent : 4}%` }}
                     />
                   </div>
                   <span className="text-xs font-medium text-muted-foreground">
